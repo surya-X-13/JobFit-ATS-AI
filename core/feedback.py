@@ -306,53 +306,148 @@ def generate_job_and_career_recommendations(user_input: str) -> dict:
 
 
 def _fallback_career_recommendations(user_input: str, error: str = "") -> dict:
-    """Fallback career recommendation data when Groq API is unavailable."""
+    """Dynamic fallback career recommendation engine when Groq API is unavailable or rate-limited."""
+    text_lower = user_input.lower()
+    
+    # Extract candidate skills
+    try:
+        from core.skill_extractor import extract_skills_spacy
+        extracted_skills = extract_skills_spacy(user_input)
+    except Exception:
+        extracted_skills = []
+
+    skills_str = ", ".join(extracted_skills[:8]) if extracted_skills else "software engineering, modern frameworks, and problem-solving"
+    top_skill = extracted_skills[0] if extracted_skills else "Software Engineering"
+
+    # Domain Detection
+    is_mobile = any(k in text_lower for k in ["flutter", "react native", "android", "ios", "kotlin", "swift", "mobile"])
+    is_ai_ml = any(k in text_lower for k in ["pytorch", "tensorflow", "scikit-learn", "deep learning", "machine learning", "computer vision", "nlp", "yolo", "opencv", "huggingface", "llm", "ai"])
+    is_data = any(k in text_lower for k in ["spark", "kafka", "pandas", "hadoop", "snowflake", "bigquery", "etl", "data pipeline", "data engineer"])
+    is_devops = any(k in text_lower for k in ["docker", "kubernetes", "k8s", "terraform", "ansible", "jenkins", "ci/cd", "aws", "gcp", "azure", "devops"])
+    is_frontend = any(k in text_lower for k in ["react", "vue", "angular", "next.js", "tailwind", "typescript", "css", "html", "frontend", "ui/ux"])
+    is_cyber = any(k in text_lower for k in ["cybersecurity", "penetration testing", "wireshark", "metasploit", "soc", "siem", "ethical hacking", "infosec"])
+    
+    if is_mobile:
+        roles = [
+            f"Senior Mobile Application Engineer ({top_skill})",
+            "Cross-Platform iOS & Android Developer",
+            "Mobile Solutions Architect",
+        ]
+        companies = [
+            {"name": "Uber", "sector": "Rideshare & Logistics Tech", "why_fit": f"High demand for mobile engineers experienced in {skills_str}."},
+            {"name": "Spotify", "sector": "Digital Streaming & Media", "why_fit": f"Ideal match for building fluid, high-performance mobile UI apps using {skills_str}."},
+            {"name": "DoorDash", "sector": "On-Demand Delivery & Logistics", "why_fit": f"Looking for mobile specialists with proven project experience in {skills_str}."},
+            {"name": "Duolingo", "sector": "EdTech & Consumer Apps", "why_fit": f"Great fit for cross-platform app design and responsive UI features."},
+        ]
+        job_title = f"Senior Mobile Systems Engineer ({top_skill})"
+    elif is_ai_ml:
+        roles = [
+            f"AI & Machine Learning Engineer ({top_skill})",
+            "Applied Deep Learning Specialist",
+            "AI Solutions & Model Deployment Engineer",
+        ]
+        companies = [
+            {"name": "OpenAI", "sector": "Artificial Intelligence & LLMs", "why_fit": f"Strong alignment for AI model training and evaluation using {skills_str}."},
+            {"name": "NVIDIA", "sector": "AI Hardware & Deep Learning Platforms", "why_fit": f"Demands expertise in machine learning frameworks like {skills_str}."},
+            {"name": "Scale AI", "sector": "Data Infrastructure for AI", "why_fit": f"High fit for engineers building automated ML pipelines and data tools."},
+            {"name": "Hugging Face", "sector": "Open Source AI & NLP", "why_fit": f"Ideal match for hands-on model fine-tuning and API integration."},
+        ]
+        job_title = f"Senior AI & Machine Learning Engineer ({top_skill})"
+    elif is_data:
+        roles = [
+            f"Senior Data Engineer ({top_skill})",
+            "Big Data & Analytics Specialist",
+            "Data Platform Architect",
+        ]
+        companies = [
+            {"name": "Snowflake", "sector": "Data Cloud & Analytics", "why_fit": f"High demand for large-scale data modeling and processing using {skills_str}."},
+            {"name": "Databricks", "sector": "Data Intelligence & Lakehouse", "why_fit": f"Ideal fit for distributed data pipelines and analytics systems."},
+            {"name": "Palantir", "sector": "Enterprise Data Platforms", "why_fit": f"Great match for robust ETL workflows and complex data integration."},
+            {"name": "Stripe", "sector": "Fintech & Financial Data", "why_fit": f"Strong alignment for real-time transaction processing and analytics."},
+        ]
+        job_title = f"Senior Data Platform Engineer ({top_skill})"
+    elif is_devops:
+        roles = [
+            f"Cloud Infrastructure & DevOps Engineer ({top_skill})",
+            "Site Reliability Engineer (SRE)",
+            "Cloud Platform Architect",
+        ]
+        companies = [
+            {"name": "Datadog", "sector": "Cloud Observability & SaaS", "why_fit": f"High demand for infrastructure automation and container orchestration using {skills_str}."},
+            {"name": "HashiCorp", "sector": "Cloud Infrastructure Automation", "why_fit": f"Ideal fit for Infrastructure-as-Code and multi-cloud management."},
+            {"name": "AWS (Amazon)", "sector": "Cloud Infrastructure & Services", "why_fit": f"Seeking engineers proficient in containerization, scaling, and CI/CD."},
+            {"name": "Cloudflare", "sector": "Edge Computing & Security", "why_fit": f"Great match for high-availability networking and zero-trust systems."},
+        ]
+        job_title = f"Senior Cloud Infrastructure Engineer ({top_skill})"
+    elif is_frontend:
+        roles = [
+            f"Senior Frontend & Web Engineer ({top_skill})",
+            "Full Stack UI Specialist",
+            "Frontend Systems Architect",
+        ]
+        companies = [
+            {"name": "Vercel", "sector": "Frontend Platform & Edge Systems", "why_fit": f"High demand for modern web application performance using {skills_str}."},
+            {"name": "Figma", "sector": "Collaborative Design Software", "why_fit": f"Ideal fit for building complex, interactive user interfaces and component libraries."},
+            {"name": "Canva", "sector": "Visual Communication & SaaS", "why_fit": f"Seeking UI engineers skilled in responsive design and state management."},
+            {"name": "Airbnb", "sector": "Consumer Web & Marketplace", "why_fit": f"Great match for component-driven architecture and web optimization."},
+        ]
+        job_title = f"Senior Frontend & UI Engineer ({top_skill})"
+    elif is_cyber:
+        roles = [
+            f"Cybersecurity & Penetration Testing Engineer ({top_skill})",
+            "Information Security Specialist",
+            "SOC & Security Automation Engineer",
+        ]
+        companies = [
+            {"name": "CrowdStrike", "sector": "Endpoint Security & Threat Intelligence", "why_fit": f"High demand for threat analysis and security automation using {skills_str}."},
+            {"name": "Palo Alto Networks", "sector": "Enterprise Network Security", "why_fit": f"Ideal match for vulnerability assessment and security policy enforcement."},
+            {"name": "Cloudflare", "sector": "Web Application Firewall & Security", "why_fit": f"Seeking security professionals skilled in packet analysis and network defense."},
+            {"name": "Mandiant", "sector": "Incident Response & Cybersecurity", "why_fit": f"Great fit for hands-on penetration testing and forensics."},
+        ]
+        job_title = f"Senior Security & Systems Engineer ({top_skill})"
+    else:
+        roles = [
+            f"Senior Software Engineer ({top_skill})",
+            "Full Stack Systems Developer",
+            "Backend & API Engineer",
+        ]
+        companies = [
+            {"name": "Stripe", "sector": "Fintech & API Infrastructure", "why_fit": f"High demand for scalable microservices and clean code architecture using {skills_str}."},
+            {"name": "Datadog", "sector": "Cloud Observability & SaaS", "why_fit": f"Ideal fit for software engineers with hands-on experience in {skills_str}."},
+            {"name": "Snowflake", "sector": "Data Cloud & Enterprise Software", "why_fit": f"Strong alignment for scalable backend systems and database engineering."},
+            {"name": "Atlassian", "sector": "Developer Tools & Enterprise SaaS", "why_fit": f"Great match for building resilient API services and collaborative tools."},
+        ]
+        job_title = f"Senior Software Engineer ({top_skill})"
+
+    snippet = user_input.strip()[:250].replace('\n', ' ')
+    generated_jd = (
+        f"Job Title: {job_title}\n\n"
+        f"Role Summary:\n"
+        f"We are looking for a skilled professional with expertise in {skills_str} to lead key development initiatives. "
+        f"Based on your profile highlights (\"{snippet}...\"), this role focuses on building production-grade solutions, "
+        f"optimizing application performance, and maintaining modern engineering standards.\n\n"
+        f"Key Responsibilities:\n"
+        f"• Design, build, and maintain scalable applications and services utilizing {top_skill}.\n"
+        f"• Implement best practices for code quality, testing, and continuous integration.\n"
+        f"• Collaborate closely with cross-functional product and engineering teams.\n"
+        f"• Deliver robust technical solutions aligned with candidate background: {skills_str}.\n\n"
+        f"Requirements:\n"
+        f"• 3+ years of professional development experience in {skills_str}.\n"
+        f"• Demonstrated track record in software design, API integration, or system architecture.\n"
+        f"• Strong analytical skills and familiarity with modern development tools."
+    )
+
+    career_insights = [
+        f"Emphasize your hands-on experience with {skills_str} at the top of your resume summary.",
+        "Quantify project outcomes with numbers (e.g., 'reduced latency by 25%', 'served 10k users') to increase ATS ranking.",
+        f"Target roles specializing in {top_skill} to maximize your salary negotiation leverage.",
+    ]
+
     return {
-        "recommended_roles": [
-            "Senior Full Stack Software Engineer",
-            "Cloud Infrastructure & DevOps Engineer",
-            "AI Solutions & Backend Engineer",
-        ],
-        "target_companies": [
-            {
-                "name": "Datadog",
-                "sector": "Cloud Observability & SaaS",
-                "why_fit": "High demand for Python, microservices, and high-concurrency backend experience.",
-            },
-            {
-                "name": "Snowflake",
-                "sector": "Data Cloud & Analytics",
-                "why_fit": "Ideal fit for engineers with distributed systems, SQL, and backend API design skills.",
-            },
-            {
-                "name": "Stripe",
-                "sector": "Fintech & API Infrastructure",
-                "why_fit": "Strong match for scalable microservices, robust testing, and security-focused architecture.",
-            },
-            {
-                "name": "OpenAI",
-                "sector": "Artificial Intelligence & LLMs",
-                "why_fit": "Great match for Python, PyTorch, model deployment, and cloud data infrastructure.",
-            },
-        ],
-        "generated_job_description": (
-            "Job Title: Senior Software & AI Systems Engineer\n\n"
-            "Role Summary:\n"
-            "We are seeking a Senior Engineer to build, scale, and optimize high-performance microservices and AI-driven workflows.\n\n"
-            "Key Responsibilities:\n"
-            "• Architect and deploy production-grade web applications and REST/GraphQL APIs.\n"
-            "• Manage containerized infrastructure using Docker, Kubernetes, and AWS.\n"
-            "• Integrate machine learning models into real-time data pipelines.\n"
-            "• Collaborate in Agile sprints and mentor junior engineering team members.\n\n"
-            "Requirements:\n"
-            "• 4+ years of software development experience with Python, React, and SQL databases.\n"
-            "• Demonstrated project work in microservices, cloud deployments, or AI pipelines.\n"
-            "• Bachelor's degree in Computer Science or equivalent hands-on project experience."
-        ),
-        "career_insights": [
-            "Highlight quantified metrics (e.g. throughput increase, latency reduction) in your project descriptions.",
-            "Add cloud infrastructure certifications (AWS/Azure) to stand out for senior roles.",
-        ],
-        "_source": "fallback",
+        "recommended_roles": roles,
+        "target_companies": companies,
+        "generated_job_description": generated_jd,
+        "career_insights": career_insights,
+        "_source": "dynamic_fallback",
         "_error": error,
     }
