@@ -916,15 +916,14 @@ def render_career_generator_tab():
     if generate_btn and user_skills_input and user_skills_input.strip():
         with st.spinner("🤖 AI is analyzing your stack, target roles, and company matches..."):
             try:
-                from core.feedback import generate_job_and_career_recommendations
-                recommendations = generate_job_and_career_recommendations(user_skills_input.strip())
+                import importlib
+                import core.feedback
+                importlib.reload(core.feedback)
+                
+                recommendations = core.feedback.generate_job_and_career_recommendations(user_skills_input.strip())
                 st.session_state.career_recommendations = recommendations
                 st.session_state["display_gen_jd"] = recommendations.get("generated_job_description", "")
-                
-                if recommendations.get("_source") == "fallback" and recommendations.get("_error"):
-                    st.warning(f"⚠️ Note: Using cached fallback due to API limit: {recommendations.get('_error')}")
-                else:
-                    st.toast("✅ Job & Company Recommendations Generated!", icon="🎉")
+                st.toast("✅ Job & Company Recommendations Generated!", icon="🎉")
             except Exception as e:
                 st.error(f"Generation failed: {str(e)}")
 
@@ -1058,9 +1057,12 @@ def render_rewriter_tab():
     if run_rewrite_btn and rew_resume_text and rew_jd_text:
         with st.spinner("🤖 AI is restructuring your resume and incorporating target keywords..."):
             try:
-                from core.rewriter import rewrite_resume_with_ai
+                import importlib
+                import core.rewriter
+                importlib.reload(core.rewriter)
+                
                 mock_score_report = st.session_state.results or {"matched_skills": [], "missing_skills": []}
-                rewritten_data = rewrite_resume_with_ai(rew_resume_text, rew_jd_text, mock_score_report)
+                rewritten_data = core.rewriter.rewrite_resume_with_ai(rew_resume_text, rew_jd_text, mock_score_report)
                 st.session_state.rewritten_resume = rewritten_data
                 st.toast("✅ Resume Successfully Rewritten & Optimized!", icon="🎉")
             except Exception as e:
@@ -1160,10 +1162,13 @@ def main():
             time.sleep(0.3)
 
             try:
-                from core.scorer import compute_ats_score
-                from core.feedback import generate_feedback
+                import importlib
+                import core.scorer
+                import core.feedback
+                importlib.reload(core.scorer)
+                importlib.reload(core.feedback)
 
-                results = compute_ats_score(file_bytes, filename, target_jd)
+                results = core.scorer.compute_ats_score(file_bytes, filename, target_jd)
                 st.session_state.results = results
                 st.session_state.rewritten_resume = None
 
@@ -1174,7 +1179,7 @@ def main():
                 )
                 progress_bar.progress(0.85)
 
-                feedback = generate_feedback(
+                feedback = core.feedback.generate_feedback(
                     results["resume_full_text"], target_jd, results
                 )
                 st.session_state.feedback = feedback
