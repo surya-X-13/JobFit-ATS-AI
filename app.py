@@ -571,8 +571,8 @@ def render_ats_scanner_tab():
             unsafe_allow_html=True,
         )
 
-        if "jd_input" not in st.session_state and st.session_state.transferred_jd:
-            st.session_state.jd_input = st.session_state.transferred_jd
+        if st.session_state.get("transferred_jd"):
+            st.session_state["jd_input"] = st.session_state.pop("transferred_jd")
 
         jd_text = st.text_area(
             label="Job Description",
@@ -978,17 +978,19 @@ def render_career_generator_tab():
                 unsafe_allow_html=True,
             )
             generated_jd = rec.get("generated_job_description", "")
+            if "display_gen_jd" not in st.session_state or generate_btn:
+                st.session_state["display_gen_jd"] = generated_jd
+
             st.text_area(
                 label="Generated JD",
-                value=generated_jd,
                 height=260,
                 key="display_gen_jd",
             )
 
             if st.button("📋 Copy JD to ATS Diagnostic Scanner", key="transfer_jd_btn", use_container_width=True):
-                st.session_state.jd_input = generated_jd
-                st.session_state.transferred_jd = generated_jd
-                st.toast("✅ Job Description copied to ATS Scanner!", icon="📋")
+                st.session_state["transferred_jd"] = st.session_state.get("display_gen_jd", generated_jd)
+                st.session_state["jd_input"] = st.session_state.get("display_gen_jd", generated_jd)
+                st.toast("✅ Job Description copied! Switch to the Scanner tab to scan.", icon="📋")
 
             st.markdown("<br>", unsafe_allow_html=True)
             st.markdown(
