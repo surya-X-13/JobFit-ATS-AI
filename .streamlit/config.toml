@@ -3,6 +3,8 @@ headless = true
 enableCORS = false
 enableXsrfProtection = false
 address = "0.0.0.0"
+fileWatcherType = "none"
+
 
 [theme]
 primaryColor = "#7c6fff"
