@@ -291,24 +291,40 @@ def generate_job_and_career_recommendations(user_input: str) -> dict:
 
     prompt = JOB_GENERATION_PROMPT_TEMPLATE.format(user_input=user_input[:3000])
 
+    content = ""
     try:
         client = _get_groq_client()
-        response = client.chat.completions.create(
-            model=GROQ_MODEL,
-            messages=[
-                {
-                    "role": "system",
-                    "content": "You are an expert tech recruiter. Respond with valid JSON only.",
-                },
-                {"role": "user", "content": prompt},
-            ],
-            response_format={"type": "json_object"},
-            temperature=0.7,
-            max_tokens=2048,
-        )
+        # Try primary model: llama-3.3-70b-versatile
+        try:
+            response = client.chat.completions.create(
+                model=GROQ_MODEL,
+                messages=[
+                    {
+                        "role": "system",
+                        "content": "You are an expert technical recruiter and career coach. Respond strictly with a valid JSON object containing recommended_roles, target_companies, generated_job_description, and career_insights.",
+                    },
+                    {"role": "user", "content": prompt},
+                ],
+                temperature=0.7,
+                max_tokens=2048,
+            )
+        except Exception:
+            # Fallback to secondary model: llama-3.1-8b-instant
+            response = client.chat.completions.create(
+                model="llama-3.1-8b-instant",
+                messages=[
+                    {
+                        "role": "system",
+                        "content": "You are an expert technical recruiter and career coach. Respond strictly with a valid JSON object containing recommended_roles, target_companies, generated_job_description, and career_insights.",
+                    },
+                    {"role": "user", "content": prompt},
+                ],
+                temperature=0.7,
+                max_tokens=2048,
+            )
 
         content = response.choices[0].message.content.strip()
-        content = re.sub(r"^```(?:json)?\s*", "", content)
+        content = re.sub(r"^```(?:json)?\s*", "", content, flags=re.IGNORECASE)
         content = re.sub(r"\s*```$", "", content)
 
         data = json.loads(content)
@@ -316,15 +332,15 @@ def generate_job_and_career_recommendations(user_input: str) -> dict:
         return data
 
     except Exception as e:
-        # Fallback regex JSON extraction
-        try:
-            json_match = re.search(r"\{.*\}", content, re.DOTALL)
-            if json_match:
-                data = json.loads(json_match.group())
-                data["_source"] = "groq"
-                return data
-        except Exception:
-            pass
+        if content:
+            try:
+                json_match = re.search(r"\{.*\}", content, re.DOTALL)
+                if json_match:
+                    data = json.loads(json_match.group())
+                    data["_source"] = "groq"
+                    return data
+            except Exception:
+                pass
         return _fallback_career_recommendations(user_input, error=str(e))
 
 
@@ -343,136 +359,109 @@ def _fallback_career_recommendations(user_input: str, error: str = "") -> dict:
 
     raw_words = re.findall(r"\b[A-Za-z0-9+#.-]{2,20}\b", raw_text)
     word_candidates = []
-    stop_words = {"with", "from", "and", "the", "for", "using", "built", "project", "projects", "stack", "tech", "skills", "experience", "work", "engineered", "developed", "application", "system", "example", "like", "such", "have", "that", "this"}
+    stop_words = {"with", "from", "and", "the", "for", "using", "built", "project", "projects", "stack", "tech", "skills", "experience", "work", "engineered", "developed", "application", "system", "example", "like", "such", "have", "that", "this", "role", "summary"}
     for w in raw_words:
         if w.lower() not in stop_words and len(w) > 2:
             if w not in word_candidates and w.lower() not in [s.lower() for s in word_candidates]:
                 word_candidates.append(w)
 
     combined_skills = extracted_skills + [w for w in word_candidates if w.lower() not in [s.lower() for s in extracted_skills]]
-    skills_str = ", ".join(combined_skills[:8]) if combined_skills else "Software Engineering & System Architecture"
+    skills_str = ", ".join(combined_skills[:8]) if combined_skills else "Software Engineering & System Design"
     top_skill = combined_skills[0] if combined_skills else "Software Development"
+    second_skill = combined_skills[1] if len(combined_skills) > 1 else "API Engineering"
+    third_skill = combined_skills[2] if len(combined_skills) > 2 else "Cloud Systems"
 
     # Domain Detection
-    is_mobile = any(k in text_lower for k in ["flutter", "react native", "android", "ios", "kotlin", "swift", "mobile"])
-    is_ai_ml = any(k in text_lower for k in ["pytorch", "tensorflow", "scikit-learn", "deep learning", "machine learning", "computer vision", "nlp", "yolo", "opencv", "huggingface", "llm", "ai"])
-    is_data = any(k in text_lower for k in ["spark", "kafka", "pandas", "hadoop", "snowflake", "bigquery", "etl", "data pipeline", "data engineer"])
-    is_devops = any(k in text_lower for k in ["docker", "kubernetes", "k8s", "terraform", "ansible", "jenkins", "ci/cd", "aws", "gcp", "azure", "devops"])
-    is_frontend = any(k in text_lower for k in ["react", "vue", "angular", "next.js", "tailwind", "typescript", "css", "html", "frontend", "ui/ux"])
-    is_cyber = any(k in text_lower for k in ["cybersecurity", "penetration testing", "wireshark", "metasploit", "soc", "siem", "ethical hacking", "infosec"])
+    is_mobile = any(k in text_lower for k in ["flutter", "react native", "android", "ios", "kotlin", "swift", "mobile", "xcode"])
+    is_ai_ml = any(k in text_lower for k in ["pytorch", "tensorflow", "scikit-learn", "deep learning", "machine learning", "computer vision", "nlp", "yolo", "opencv", "huggingface", "llm", "ai", "bert", "gpt", "rag", "transformer"])
+    is_data = any(k in text_lower for k in ["spark", "kafka", "pandas", "hadoop", "snowflake", "bigquery", "etl", "data pipeline", "sql", "postgres", "mongodb", "databricks"])
+    is_devops = any(k in text_lower for k in ["docker", "kubernetes", "k8s", "terraform", "ansible", "jenkins", "ci/cd", "aws", "gcp", "azure", "devops", "helm", "linux"])
+    is_frontend = any(k in text_lower for k in ["react", "vue", "angular", "next.js", "tailwind", "typescript", "javascript", "css", "html", "frontend", "ui/ux", "web"])
+    is_cyber = any(k in text_lower for k in ["cybersecurity", "penetration testing", "wireshark", "metasploit", "soc", "siem", "ethical hacking", "infosec", "security", "firewall"])
     
     if is_mobile:
-        roles = [
-            f"Senior Mobile Application Engineer ({top_skill})",
-            "Cross-Platform iOS & Android Developer",
-            "Mobile Solutions Architect",
-        ]
+        roles = [f"Senior {top_skill} Mobile Engineer", f"Cross-Platform {second_skill} Developer", "Mobile Solutions Architect"]
         companies = [
             {"name": "Uber", "sector": "Rideshare & Logistics Tech", "why_fit": f"High demand for mobile engineers experienced in {skills_str}."},
             {"name": "Spotify", "sector": "Digital Streaming & Media", "why_fit": f"Ideal match for building fluid, high-performance mobile UI apps using {skills_str}."},
-            {"name": "DoorDash", "sector": "On-Demand Delivery & Logistics", "why_fit": f"Looking for mobile specialists with proven project experience in {skills_str}."},
-            {"name": "Duolingo", "sector": "EdTech & Consumer Apps", "why_fit": f"Great fit for cross-platform app design and responsive UI features."},
+            {"name": "DoorDash", "sector": "On-Demand Delivery & Logistics", "why_fit": f"Looking for mobile specialists with proven project experience in {top_skill}."},
+            {"name": "Duolingo", "sector": "EdTech & Consumer Apps", "why_fit": f"Great fit for cross-platform app design using {second_skill}."},
         ]
-        job_title = f"Senior Mobile Systems Engineer ({top_skill})"
+        job_title = f"Senior {top_skill} Mobile Engineer"
     elif is_ai_ml:
-        roles = [
-            f"AI & Machine Learning Engineer ({top_skill})",
-            "Applied Deep Learning Specialist",
-            "AI Solutions & Model Deployment Engineer",
-        ]
+        roles = [f"AI & Machine Learning Engineer ({top_skill})", f"Applied {second_skill} & Deep Learning Specialist", "AI Solutions & Model Deployment Engineer"]
         companies = [
             {"name": "OpenAI", "sector": "Artificial Intelligence & LLMs", "why_fit": f"Strong alignment for AI model training and evaluation using {skills_str}."},
-            {"name": "NVIDIA", "sector": "AI Hardware & Deep Learning Platforms", "why_fit": f"Demands expertise in machine learning frameworks like {skills_str}."},
-            {"name": "Scale AI", "sector": "Data Infrastructure for AI", "why_fit": f"High fit for engineers building automated ML pipelines and data tools."},
-            {"name": "Hugging Face", "sector": "Open Source AI & NLP", "why_fit": f"Ideal match for hands-on model fine-tuning and API integration."},
+            {"name": "NVIDIA", "sector": "AI Hardware & Deep Learning Platforms", "why_fit": f"Demands expertise in machine learning frameworks like {top_skill}."},
+            {"name": "Scale AI", "sector": "Data Infrastructure for AI", "why_fit": f"High fit for engineers building automated ML pipelines with {second_skill}."},
+            {"name": "Hugging Face", "sector": "Open Source AI & NLP", "why_fit": f"Ideal match for hands-on model fine-tuning using {skills_str}."},
         ]
         job_title = f"Senior AI & Machine Learning Engineer ({top_skill})"
     elif is_data:
-        roles = [
-            f"Senior Data Engineer ({top_skill})",
-            "Big Data & Analytics Specialist",
-            "Data Platform Architect",
-        ]
+        roles = [f"Senior Data Engineer ({top_skill})", f"Big Data & {second_skill} Analytics Specialist", "Data Platform Architect"]
         companies = [
-            {"name": "Snowflake", "sector": "Data Cloud & Analytics", "why_fit": f"High demand for large-scale data modeling and processing using {skills_str}."},
-            {"name": "Databricks", "sector": "Data Intelligence & Lakehouse", "why_fit": f"Ideal fit for distributed data pipelines and analytics systems."},
-            {"name": "Palantir", "sector": "Enterprise Data Platforms", "why_fit": f"Great match for robust ETL workflows and complex data integration."},
-            {"name": "Stripe", "sector": "Fintech & Financial Data", "why_fit": f"Strong alignment for real-time transaction processing and analytics."},
+            {"name": "Snowflake", "sector": "Data Cloud & Analytics", "why_fit": f"High demand for large-scale data modeling using {skills_str}."},
+            {"name": "Databricks", "sector": "Data Intelligence & Lakehouse", "why_fit": f"Ideal fit for distributed data pipelines using {top_skill}."},
+            {"name": "Palantir", "sector": "Enterprise Data Platforms", "why_fit": f"Great match for robust ETL workflows using {second_skill}."},
+            {"name": "Stripe", "sector": "Fintech & Financial Data", "why_fit": f"Strong alignment for real-time transaction processing with {third_skill}."},
         ]
         job_title = f"Senior Data Platform Engineer ({top_skill})"
     elif is_devops:
-        roles = [
-            f"Cloud Infrastructure & DevOps Engineer ({top_skill})",
-            "Site Reliability Engineer (SRE)",
-            "Cloud Platform Architect",
-        ]
+        roles = [f"Cloud Infrastructure & DevOps Engineer ({top_skill})", f"Site Reliability Engineer ({second_skill})", "Cloud Platform Architect"]
         companies = [
-            {"name": "Datadog", "sector": "Cloud Observability & SaaS", "why_fit": f"High demand for infrastructure automation and container orchestration using {skills_str}."},
-            {"name": "HashiCorp", "sector": "Cloud Infrastructure Automation", "why_fit": f"Ideal fit for Infrastructure-as-Code and multi-cloud management."},
-            {"name": "AWS (Amazon)", "sector": "Cloud Infrastructure & Services", "why_fit": f"Seeking engineers proficient in containerization, scaling, and CI/CD."},
-            {"name": "Cloudflare", "sector": "Edge Computing & Security", "why_fit": f"Great match for high-availability networking and zero-trust systems."},
+            {"name": "Datadog", "sector": "Cloud Observability & SaaS", "why_fit": f"High demand for infrastructure automation using {skills_str}."},
+            {"name": "HashiCorp", "sector": "Cloud Infrastructure Automation", "why_fit": f"Ideal fit for Infrastructure-as-Code with {top_skill}."},
+            {"name": "AWS (Amazon)", "sector": "Cloud Infrastructure & Services", "why_fit": f"Seeking engineers proficient in containerization using {second_skill}."},
+            {"name": "Cloudflare", "sector": "Edge Computing & Security", "why_fit": f"Great match for high-availability networking using {third_skill}."},
         ]
         job_title = f"Senior Cloud Infrastructure Engineer ({top_skill})"
     elif is_frontend:
-        roles = [
-            f"Senior Frontend & Web Engineer ({top_skill})",
-            "Full Stack UI Specialist",
-            "Frontend Systems Architect",
-        ]
+        roles = [f"Senior Frontend & Web Engineer ({top_skill})", f"Full Stack {second_skill} Specialist", "Frontend Systems Architect"]
         companies = [
             {"name": "Vercel", "sector": "Frontend Platform & Edge Systems", "why_fit": f"High demand for modern web application performance using {skills_str}."},
-            {"name": "Figma", "sector": "Collaborative Design Software", "why_fit": f"Ideal fit for building complex, interactive user interfaces and component libraries."},
-            {"name": "Canva", "sector": "Visual Communication & SaaS", "why_fit": f"Seeking UI engineers skilled in responsive design and state management."},
-            {"name": "Airbnb", "sector": "Consumer Web & Marketplace", "why_fit": f"Great match for component-driven architecture and web optimization."},
+            {"name": "Figma", "sector": "Collaborative Design Software", "why_fit": f"Ideal fit for building complex, interactive user interfaces with {top_skill}."},
+            {"name": "Canva", "sector": "Visual Communication & SaaS", "why_fit": f"Seeking UI engineers skilled in responsive design using {second_skill}."},
+            {"name": "Airbnb", "sector": "Consumer Web & Marketplace", "why_fit": f"Great match for component-driven architecture using {third_skill}."},
         ]
         job_title = f"Senior Frontend & UI Engineer ({top_skill})"
     elif is_cyber:
-        roles = [
-            f"Cybersecurity & Penetration Testing Engineer ({top_skill})",
-            "Information Security Specialist",
-            "SOC & Security Automation Engineer",
-        ]
+        roles = [f"Cybersecurity & Penetration Testing Engineer ({top_skill})", f"Information Security Specialist ({second_skill})", "SOC & Security Automation Engineer"]
         companies = [
-            {"name": "CrowdStrike", "sector": "Endpoint Security & Threat Intelligence", "why_fit": f"High demand for threat analysis and security automation using {skills_str}."},
-            {"name": "Palo Alto Networks", "sector": "Enterprise Network Security", "why_fit": f"Ideal match for vulnerability assessment and security policy enforcement."},
-            {"name": "Cloudflare", "sector": "Web Application Firewall & Security", "why_fit": f"Seeking security professionals skilled in packet analysis and network defense."},
-            {"name": "Mandiant", "sector": "Incident Response & Cybersecurity", "why_fit": f"Great fit for hands-on penetration testing and forensics."},
+            {"name": "CrowdStrike", "sector": "Endpoint Security & Threat Intelligence", "why_fit": f"High demand for threat analysis using {skills_str}."},
+            {"name": "Palo Alto Networks", "sector": "Enterprise Network Security", "why_fit": f"Ideal match for vulnerability assessment using {top_skill}."},
+            {"name": "Cloudflare", "sector": "Web Application Firewall & Security", "why_fit": f"Seeking security professionals skilled in packet analysis with {second_skill}."},
+            {"name": "Mandiant", "sector": "Incident Response & Cybersecurity", "why_fit": f"Great fit for hands-on penetration testing with {third_skill}."},
         ]
         job_title = f"Senior Security & Systems Engineer ({top_skill})"
     else:
-        roles = [
-            f"Senior Software Engineer ({top_skill})",
-            "Full Stack Systems Developer",
-            "Backend & API Engineer",
-        ]
+        roles = [f"Senior {top_skill} Engineer", f"Full Stack {second_skill} Developer", "Backend Systems Specialist"]
         companies = [
-            {"name": "Stripe", "sector": "Fintech & API Infrastructure", "why_fit": f"High demand for scalable microservices and clean code architecture using {skills_str}."},
-            {"name": "Datadog", "sector": "Cloud Observability & SaaS", "why_fit": f"Ideal fit for software engineers with hands-on experience in {skills_str}."},
-            {"name": "Snowflake", "sector": "Data Cloud & Enterprise Software", "why_fit": f"Strong alignment for scalable backend systems and database engineering."},
-            {"name": "Atlassian", "sector": "Developer Tools & Enterprise SaaS", "why_fit": f"Great match for building resilient API services and collaborative tools."},
+            {"name": "Stripe", "sector": "Fintech & API Infrastructure", "why_fit": f"High demand for scalable microservices using {skills_str}."},
+            {"name": "Datadog", "sector": "Cloud Observability & SaaS", "why_fit": f"Ideal fit for software engineers with hands-on experience in {top_skill}."},
+            {"name": "Snowflake", "sector": "Data Cloud & Enterprise Software", "why_fit": f"Strong alignment for backend systems and database engineering with {second_skill}."},
+            {"name": "Atlassian", "sector": "Developer Tools & Enterprise SaaS", "why_fit": f"Great match for building resilient API services using {third_skill}."},
         ]
-        job_title = f"Senior Software Engineer ({top_skill})"
+        job_title = f"Senior {top_skill} & Systems Developer"
 
     # Dynamic bullet points built directly from raw user lines
     parsed_bullets = []
     for line in user_input.split('\n'):
         cleaned_line = line.strip("- *•\t").strip()
-        if len(cleaned_line) > 10 and not cleaned_line.lower().startswith(("tech stack", "skills", "projects")):
+        if len(cleaned_line) > 8 and not cleaned_line.lower().startswith(("tech stack", "skills", "projects", "example")):
             parsed_bullets.append(cleaned_line)
 
     responsibilities_bullets = []
     if parsed_bullets:
-        for b in parsed_bullets[:4]:
-            responsibilities_bullets.append(f"• Drive technical execution and architecture for: {b}")
-    
-    if not responsibilities_bullets:
+        for b in parsed_bullets[:5]:
+            responsibilities_bullets.append(f"• Lead technical execution and system architecture for: {b}")
+    else:
         responsibilities_bullets = [
-            f"• Design, build, and maintain scalable applications utilizing {top_skill} and {skills_str}.",
-            f"• Implement robust engineering standards for code quality, API integration, and automated testing.",
-            f"• Lead technical design reviews and collaborate across engineering teams.",
+            f"• Design, build, and maintain high-performance services utilizing {top_skill} and {second_skill}.",
+            f"• Implement robust engineering standards for code quality, testing, and continuous deployment.",
+            f"• Collaborate across product and engineering teams to deliver features powered by {third_skill}.",
         ]
 
-    req_bullets = [f"• Demonstrated hands-on expertise in {sk}." for sk in combined_skills[:5]]
+    req_bullets = [f"• Demonstrated hands-on experience with {sk} in production environments." for sk in combined_skills[:6]]
     if not req_bullets:
         req_bullets = [f"• 3+ years of professional engineering experience with {top_skill}."]
 
@@ -482,20 +471,20 @@ def _fallback_career_recommendations(user_input: str, error: str = "") -> dict:
     generated_jd = (
         f"Job Title: {job_title}\n\n"
         f"Role Summary:\n"
-        f"We are seeking a high-performing {job_title} to architect and scale our core technical platform. "
-        f"This position requires deep hands-on proficiency in {skills_str}. You will work on critical projects "
-        f"incorporating candidate skill highlights: {user_input.strip()[:200]}...\n\n"
+        f"We are seeking an experienced {job_title} to join our core engineering team. "
+        f"In this role, you will leverage your expertise in {skills_str} to architect, build, and scale production systems. "
+        f"Your key focus areas align directly with candidate profile highlights: {user_input.strip()[:200]}...\n\n"
         f"Key Responsibilities:\n"
         f"{resp_str}\n\n"
         f"Technical Requirements:\n"
         f"{req_str}\n"
-        f"• Strong problem-solving abilities and track record of building production-grade software."
+        f"• Strong analytical, debugging, and problem-solving skills."
     )
 
     career_insights = [
-        f"Emphasize your hands-on experience with {skills_str} at the top of your resume summary.",
-        "Quantify project outcomes with numbers (e.g., 'reduced latency by 25%', 'served 10k users') to increase ATS ranking.",
-        f"Target roles specializing in {top_skill} to maximize your salary negotiation leverage.",
+        f"Highlight your core competencies in {skills_str} at the top of your resume summary.",
+        f"Quantify deliverables from your project work (\"{user_input.strip()[:60]}...\") with measurable business impact metrics.",
+        f"Target roles specializing in {top_skill} to maximize your market value and compensation.",
     ]
 
     return {
