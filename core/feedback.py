@@ -11,17 +11,30 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
 GROQ_MODEL = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
+
+
+def _get_api_key() -> str:
+    """Retrieve Groq API key from environment or Streamlit secrets."""
+    key = os.getenv("GROQ_API_KEY", "")
+    if not key:
+        try:
+            import streamlit as st
+            if "GROQ_API_KEY" in st.secrets:
+                key = st.secrets["GROQ_API_KEY"]
+        except Exception:
+            pass
+    return key
 
 
 def _get_groq_client():
     """Initialize and return a Groq client."""
+    key = _get_api_key()
     try:
         from groq import Groq
-        if not GROQ_API_KEY:
-            raise ValueError("GROQ_API_KEY not set in environment.")
-        return Groq(api_key=GROQ_API_KEY)
+        if not key:
+            raise ValueError("GROQ_API_KEY not set in environment or Streamlit secrets.")
+        return Groq(api_key=key)
     except ImportError:
         raise ImportError("groq package not installed. Run: pip install groq")
 
@@ -273,8 +286,9 @@ def generate_job_and_career_recommendations(user_input: str) -> dict:
     """
     Generate tailored Job Description, recommended roles, and target companies based on candidate's skills and projects.
     """
-    if not GROQ_API_KEY:
-        return _fallback_career_recommendations(user_input)
+    api_key = _get_api_key()
+    if not api_key:
+        return _fallback_career_recommendations(user_input, error="GROQ_API_KEY missing in environment / Streamlit secrets")
 
     prompt = JOB_GENERATION_PROMPT_TEMPLATE.format(user_input=user_input[:3000])
 
@@ -307,17 +321,28 @@ def generate_job_and_career_recommendations(user_input: str) -> dict:
 
 def _fallback_career_recommendations(user_input: str, error: str = "") -> dict:
     """Dynamic fallback career recommendation engine when Groq API is unavailable or rate-limited."""
-    text_lower = user_input.lower()
+    raw_text = user_input.strip()
+    text_lower = raw_text.lower()
     
-    # Extract candidate skills
+    # Extract candidate skills (spaCy DB + raw words from text)
+    extracted_skills = []
     try:
         from core.skill_extractor import extract_skills_spacy
-        extracted_skills = extract_skills_spacy(user_input)
+        extracted_skills = extract_skills_spacy(raw_text)
     except Exception:
-        extracted_skills = []
+        pass
 
-    skills_str = ", ".join(extracted_skills[:8]) if extracted_skills else "software engineering, modern frameworks, and problem-solving"
-    top_skill = extracted_skills[0] if extracted_skills else "Software Engineering"
+    raw_words = re.findall(r"\b[A-Za-z0-9+#.-]{2,20}\b", raw_text)
+    word_candidates = []
+    stop_words = {"with", "from", "and", "the", "for", "using", "built", "project", "projects", "stack", "tech", "skills", "experience", "work", "engineered", "developed", "application", "system", "example", "like", "such", "have", "that", "this"}
+    for w in raw_words:
+        if w.lower() not in stop_words and len(w) > 2:
+            if w not in word_candidates and w.lower() not in [s.lower() for s in word_candidates]:
+                word_candidates.append(w)
+
+    combined_skills = extracted_skills + [w for w in word_candidates if w.lower() not in [s.lower() for s in extracted_skills]]
+    skills_str = ", ".join(combined_skills[:8]) if combined_skills else "Software Engineering & System Architecture"
+    top_skill = combined_skills[0] if combined_skills else "Software Development"
 
     # Domain Detection
     is_mobile = any(k in text_lower for k in ["flutter", "react native", "android", "ios", "kotlin", "swift", "mobile"])
