@@ -123,7 +123,8 @@ def generate_feedback(
     Returns:
         Parsed feedback dict, or fallback dict if API fails.
     """
-    if not GROQ_API_KEY:
+    api_key = _get_api_key()
+    if not api_key:
         return _fallback_feedback(score_report)
 
     prompt = FEEDBACK_PROMPT_TEMPLATE.format(
@@ -147,18 +148,17 @@ def generate_feedback(
                     "role": "system",
                     "content": (
                         "You are an expert ATS resume coach. "
-                        "Always respond with valid JSON only, no markdown code blocks."
+                        "Always respond with valid JSON only."
                     ),
                 },
                 {"role": "user", "content": prompt},
             ],
+            response_format={"type": "json_object"},
             temperature=0.4,
             max_tokens=2048,
         )
 
         content = response.choices[0].message.content.strip()
-
-        # Strip markdown code fences if present
         content = re.sub(r"^```(?:json)?\s*", "", content)
         content = re.sub(r"\s*```$", "", content)
 
@@ -167,7 +167,6 @@ def generate_feedback(
         return feedback
 
     except json.JSONDecodeError:
-        # Try to extract JSON from response
         try:
             json_match = re.search(r"\{.*\}", content, re.DOTALL)
             if json_match:
@@ -299,10 +298,11 @@ def generate_job_and_career_recommendations(user_input: str) -> dict:
             messages=[
                 {
                     "role": "system",
-                    "content": "You are an expert tech recruiter. Respond with valid JSON only, no markdown code blocks.",
+                    "content": "You are an expert tech recruiter. Respond with valid JSON only.",
                 },
                 {"role": "user", "content": prompt},
             ],
+            response_format={"type": "json_object"},
             temperature=0.7,
             max_tokens=2048,
         )
@@ -315,7 +315,16 @@ def generate_job_and_career_recommendations(user_input: str) -> dict:
         data["_source"] = "groq"
         return data
 
-    except (json.JSONDecodeError, Exception) as e:
+    except Exception as e:
+        # Fallback regex JSON extraction
+        try:
+            json_match = re.search(r"\{.*\}", content, re.DOTALL)
+            if json_match:
+                data = json.loads(json_match.group())
+                data["_source"] = "groq"
+                return data
+        except Exception:
+            pass
         return _fallback_career_recommendations(user_input, error=str(e))
 
 
@@ -444,22 +453,43 @@ def _fallback_career_recommendations(user_input: str, error: str = "") -> dict:
         ]
         job_title = f"Senior Software Engineer ({top_skill})"
 
-    snippet = user_input.strip()[:250].replace('\n', ' ')
+    # Dynamic bullet points built directly from raw user lines
+    parsed_bullets = []
+    for line in user_input.split('\n'):
+        cleaned_line = line.strip("- *•\t").strip()
+        if len(cleaned_line) > 10 and not cleaned_line.lower().startswith(("tech stack", "skills", "projects")):
+            parsed_bullets.append(cleaned_line)
+
+    responsibilities_bullets = []
+    if parsed_bullets:
+        for b in parsed_bullets[:4]:
+            responsibilities_bullets.append(f"• Drive technical execution and architecture for: {b}")
+    
+    if not responsibilities_bullets:
+        responsibilities_bullets = [
+            f"• Design, build, and maintain scalable applications utilizing {top_skill} and {skills_str}.",
+            f"• Implement robust engineering standards for code quality, API integration, and automated testing.",
+            f"• Lead technical design reviews and collaborate across engineering teams.",
+        ]
+
+    req_bullets = [f"• Demonstrated hands-on expertise in {sk}." for sk in combined_skills[:5]]
+    if not req_bullets:
+        req_bullets = [f"• 3+ years of professional engineering experience with {top_skill}."]
+
+    resp_str = "\n".join(responsibilities_bullets)
+    req_str = "\n".join(req_bullets)
+
     generated_jd = (
         f"Job Title: {job_title}\n\n"
         f"Role Summary:\n"
-        f"We are looking for a skilled professional with expertise in {skills_str} to lead key development initiatives. "
-        f"Based on your profile highlights (\"{snippet}...\"), this role focuses on building production-grade solutions, "
-        f"optimizing application performance, and maintaining modern engineering standards.\n\n"
+        f"We are seeking a high-performing {job_title} to architect and scale our core technical platform. "
+        f"This position requires deep hands-on proficiency in {skills_str}. You will work on critical projects "
+        f"incorporating candidate skill highlights: {user_input.strip()[:200]}...\n\n"
         f"Key Responsibilities:\n"
-        f"• Design, build, and maintain scalable applications and services utilizing {top_skill}.\n"
-        f"• Implement best practices for code quality, testing, and continuous integration.\n"
-        f"• Collaborate closely with cross-functional product and engineering teams.\n"
-        f"• Deliver robust technical solutions aligned with candidate background: {skills_str}.\n\n"
-        f"Requirements:\n"
-        f"• 3+ years of professional development experience in {skills_str}.\n"
-        f"• Demonstrated track record in software design, API integration, or system architecture.\n"
-        f"• Strong analytical skills and familiarity with modern development tools."
+        f"{resp_str}\n\n"
+        f"Technical Requirements:\n"
+        f"{req_str}\n"
+        f"• Strong problem-solving abilities and track record of building production-grade software."
     )
 
     career_insights = [

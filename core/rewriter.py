@@ -11,17 +11,30 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
 GROQ_MODEL = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
+
+
+def _get_api_key() -> str:
+    """Retrieve Groq API key from environment or Streamlit secrets."""
+    key = os.getenv("GROQ_API_KEY", "")
+    if not key:
+        try:
+            import streamlit as st
+            if "GROQ_API_KEY" in st.secrets:
+                key = st.secrets["GROQ_API_KEY"]
+        except Exception:
+            pass
+    return key
 
 
 def _get_groq_client():
     """Initialize and return a Groq client."""
+    key = _get_api_key()
     try:
         from groq import Groq
-        if not GROQ_API_KEY:
-            raise ValueError("GROQ_API_KEY not set in environment.")
-        return Groq(api_key=GROQ_API_KEY)
+        if not key:
+            raise ValueError("GROQ_API_KEY not set in environment or Streamlit secrets.")
+        return Groq(api_key=key)
     except ImportError:
         raise ImportError("groq package not installed.")
 
@@ -93,7 +106,8 @@ def rewrite_resume_with_ai(
     matched = ", ".join(score_report.get("matched_skills", [])) or "None"
     missing = ", ".join(score_report.get("missing_skills", [])) or "None"
 
-    if not GROQ_API_KEY:
+    api_key = _get_api_key()
+    if not api_key:
         return _fallback_rewritten_resume(resume_text, score_report)
 
     prompt = REWRITE_PROMPT_TEMPLATE.format(
@@ -110,12 +124,16 @@ def rewrite_resume_with_ai(
             messages=[
                 {
                     "role": "system",
-                    "content": "You are an expert resume writer. Respond ONLY with valid JSON, no markdown block fences.",
+                    "content": (
+                        "You are an elite ATS resume strategist. "
+                        "Respond with valid JSON only."
+                    ),
                 },
                 {"role": "user", "content": prompt},
             ],
+            response_format={"type": "json_object"},
             temperature=0.4,
-            max_tokens=2500,
+            max_tokens=2048,
         )
 
         content = response.choices[0].message.content.strip()
