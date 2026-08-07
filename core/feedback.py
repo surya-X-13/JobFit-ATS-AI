@@ -269,6 +269,10 @@ Return ONLY valid JSON matching this EXACT structure:
 """.strip()
 
 
+import streamlit as st
+
+
+@st.cache_data(show_spinner=False, ttl=1800)
 def generate_job_and_career_recommendations(user_input: str) -> dict:
     """
     Generate tailored Job Description, recommended roles, and target companies based on candidate's skills and projects.

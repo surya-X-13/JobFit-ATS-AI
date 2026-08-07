@@ -917,9 +917,14 @@ def render_career_generator_tab():
         with st.spinner("🤖 AI is analyzing your stack, target roles, and company matches..."):
             try:
                 from core.feedback import generate_job_and_career_recommendations
-                recommendations = generate_job_and_career_recommendations(user_skills_input)
+                recommendations = generate_job_and_career_recommendations(user_skills_input.strip())
                 st.session_state.career_recommendations = recommendations
-                st.toast("✅ Job & Company Recommendations Generated!", icon="🎉")
+                st.session_state["display_gen_jd"] = recommendations.get("generated_job_description", "")
+                
+                if recommendations.get("_source") == "fallback" and recommendations.get("_error"):
+                    st.warning(f"⚠️ Note: Using cached fallback due to API limit: {recommendations.get('_error')}")
+                else:
+                    st.toast("✅ Job & Company Recommendations Generated!", icon="🎉")
             except Exception as e:
                 st.error(f"Generation failed: {str(e)}")
 
